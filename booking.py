@@ -3,6 +3,7 @@
 # Install imgkit + wkhtmltopdf https://pypi.org/project/imgkit/
 from datetime import date 
 from datetime import timedelta
+import json
 import imgkit
 
 class RoomAlreadyExists(Exception):
@@ -47,6 +48,13 @@ class BookingSystem:
     ]
     rooms = {}
 
+    def __init__(self):
+        try:
+            with open("bookings.json") as storage_file:
+                self.rooms = json.load(storage_file)
+        except IOError:
+            pass
+
     # Example Usage:
     # > booking_system.add_room("HW.003")
     def add_room(self, room_number):
@@ -54,6 +62,7 @@ class BookingSystem:
             raise RoomAlreadyExists()
         
         self.rooms[room_number] = {}
+        self.persist()
 
     # Example Usage:
     # > booking_system.book_room("HW.003", date.fromisoformat("2023-12-28"), 1)
@@ -73,18 +82,7 @@ class BookingSystem:
         room_at_day["booked_slots"].append(time_slot)
         room_at_day["open_slots"].remove(time_slot)
         
-    def validate_day(self, day):
-        # within the next two weeks
-        if day.weekday() in [5, 6]:
-            raise InvalidBookingOnWeekend()
-        
-        num_days_ahead = (day - date.today()).days
-        # not on the weekend
-        if num_days_ahead > 13:
-            raise BookingTooFarAhead()
-        # not in the past
-        if num_days_ahead < 0:
-            raise BookingInThePastForbidden()
+        self.persist()
 
     def render_table(self, room_number):
         if not room_number in self.rooms:
@@ -98,11 +96,18 @@ class BookingSystem:
                 th {
                     width: 85px;
                 }
+                table {
+                    height: 450px;
+                    text-align: center;
+                }
+                #container {}
+                    
             </style>
-            <table>
-                <caption>
+            <div style="width: 800px">
+            <table style="margin: 0 auto">
+                <caption><h3>
         ''' + room_number + '''
-                </caption>
+                </h3></caption>
                 <tr>
                     <th scope="col"></th>
                     <th scope="col">Montag</th>
@@ -116,12 +121,34 @@ class BookingSystem:
             table += "  <tr><th scope=\"row\">" + self.timeslots[slot] + "</th>"
             for day in days_of_this_week:
                 if self.is_room_taken_at(room_number, day, slot):
-                    table += "<td style=\"background-color:red\">booked</td>"
+                    table += "<td style=\"background-color:#ff7373\">------</td>"
                 else:
-                    table += "<td style=\"background-color:green\">open</td>"
+                    table += "<td style=\"background-color:#c3fcab\"></td>"
             table += "</tr>"
-        table += "</table>"
+        table += "</table></div>"
         return table
+
+    def render_image_to_file(self, room, filename):
+        # 480 * 800
+        options = {'width': 800, 'height': 480, 'disable-smart-width': ''}
+        imgkit.from_string(self.render_table(room), 'out.jpg', options=options)
+
+    def persist(self):
+        with open("bookings.json", "w") as storage_file:
+            json.dump(self.rooms, storage_file)
+        
+    def validate_day(self, day):
+        # within the next two weeks
+        if day.weekday() in [5, 6]:
+            raise InvalidBookingOnWeekend()
+        
+        num_days_ahead = (day - date.today()).days
+        # not on the weekend
+        if num_days_ahead > 13:
+            raise BookingTooFarAhead()
+        # not in the past
+        if num_days_ahead < 0:
+            raise BookingInThePastForbidden()
 
     def is_room_taken_at(self, room, day, timeslot):
         room = self.rooms[room]
@@ -130,10 +157,6 @@ class BookingSystem:
         room_at_day = room[day]
         return timeslot in room_at_day["booked_slots"]
     
-    def render_image_to_file(self, room, filename):
-        # 480 * 800
-        options = {'width': 800, 'height': 480, 'disable-smart-width': ''}
-        imgkit.from_string(self.render_table(room), 'out.jpg', options=options)
         
 def main():
     booking_system = BookingSystem()
