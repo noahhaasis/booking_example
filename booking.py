@@ -7,17 +7,23 @@ import json
 import imgkit
 
 class RoomAlreadyExists(Exception):
-    pass
+    def __str__(self):
+        return "This room already exists."
 class RoomDoesntExist(Exception):
-    pass
+    def __str__(self):
+        return "This room doesn't exist."
 class TimeslotNotAvailable(Exception):
-    pass
+    def __str__(self):
+        return "This timeslot is not available."
 class InvalidBookingOnWeekend(Exception):
-    pass
+    def __str__(self):
+        return "Invalid booking on the weekend."
 class BookingTooFarAhead(Exception):
-    pass
+    def __str__(self):
+        return "This booking is too far ahead."
 class BookingInThePastForbidden(Exception):
-    pass
+    def __str__(self):
+        return "Bookings in the past are not allowed."
 
 # Internal structure of the booking system
 # Map of rooms to days to open and booked slots
@@ -162,24 +168,26 @@ def main():
     booking_system = BookingSystem()
     while True:
         line = input("> ").split()
-        if len(line) == 2 and line[0] == "render":
-            booking_system.render_image_to_file(line[1], "output.jpg")
-        elif len(line) == 1 and line[0] == "quit":
-            break
-        elif len(line) == 1 and line[0] == "help":
-            print_help()
-        elif len(line) == 3 and line[0] == "add" and line[1] == "room":
-            booking_system.add_room(line[2])
-        elif len(line) == 4:
-            room = line[1]
-            d = date.fromisoformat(line[2])
-            if not line[3] in booking_system.timeslots:
-                print("Invalid slot " + line[3])
+        try:
+            if len(line) == 2 and line[0] == "render":
+                booking_system.render_image_to_file(line[1], "output.jpg")
+            elif len(line) == 1 and line[0] == "quit":
+                break
+            elif len(line) == 1 and line[0] == "help":
+                print_help()
+            elif len(line) == 3 and line[0] == "add" and line[1] == "room":
+                booking_system.add_room(line[2])
+            elif len(line) == 4:
+                room = line[1]
+                d = date.fromisoformat(line[2])
+                if not line[3] in booking_system.timeslots:
+                    print("Invalid slot " + line[3])
+                else:
+                    booking_system.book_room(room, d, booking_system.timeslots.index(line[3]))
             else:
-                booking_system.book_room(room, d, booking_system.timeslots.index(line[3]))
-            pass
-        else:
-            print_help()
+                print_help()
+        except Exception as e:
+            print_error(e)
 
 def print_help():
     print('''
@@ -193,5 +201,9 @@ To book a room
 To render a room table
     > render HW.003
                   ''')
+
+def print_error(error):
+    # Print the error in yellow
+    print("\033[93m" + str(error) + "\033[0m")
 
 main()
