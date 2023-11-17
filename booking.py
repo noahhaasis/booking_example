@@ -1,6 +1,7 @@
 # Prerequisites
 # Install python
 # Install imgkit + wkhtmltopdf https://pypi.org/project/imgkit/
+from dataclasses import dataclass
 from datetime import date 
 from datetime import timedelta
 import json
@@ -31,10 +32,13 @@ class BookingInThePastForbidden(Exception):
 #     "HW.003": {
 #         "2023-12-30": {
 #             "open_slots": [0, 2, 3...],
-#             "booked_slots": []
+#             "booked_slots": [create_booking(1, "Statistik", "Wermuth")]
 #         }
 #     }
 # }
+
+def create_booking(slot, class_name = None, prof_name = None):
+    return {"slot": slot, "class_name": class_name, "prof_name": prof_name}
 
 class BookingSystem:
     timeslots = [
@@ -72,7 +76,7 @@ class BookingSystem:
 
     # Example Usage:
     # > booking_system.book_room("HW.003", date.fromisoformat("2023-12-28"), 1)
-    def book_room(self, room_number, day, time_slot):
+    def book_room(self, room_number, day, booking):
         if not room_number in self.rooms:
             raise RoomDoesntExist()
         self.validate_day(day)
@@ -83,10 +87,10 @@ class BookingSystem:
             room[day.isoformat()] = {"open_slots": list(range(0, len(self.timeslots))), "booked_slots": []}
 
         room_at_day = room[day.isoformat()]
-        if time_slot in room_at_day["booked_slots"]:
+        if any(b["slot"] == booking["slot"] for b in room_at_day["booked_slots"]):
             raise TimeslotNotAvailable()
-        room_at_day["booked_slots"].append(time_slot)
-        room_at_day["open_slots"].remove(time_slot)
+        room_at_day["booked_slots"].append(booking)
+        room_at_day["open_slots"].remove(booking["slot"])
         
         self.persist()
 
@@ -126,8 +130,10 @@ class BookingSystem:
         for slot in range(0, len(self.timeslots)):
             table += "  <tr><th scope=\"row\">" + self.timeslots[slot] + "</th>"
             for day in days_of_this_week:
-                if self.is_room_taken_at(room_number, day, slot):
-                    table += "<td style=\"background-color:#ff7373\">------</td>"
+                booking = self.get_booking_at(room_number, day, slot)
+                if booking is not None:
+                    content = (booking["class_name"] if "class_name" in booking else "------") + (("<br>" + booking["prof_name"]) if "prof_name" in booking else "")
+                    table += "<td style=\"background-color:#ff7373\">" + content + "</td>"
                 else:
                     table += "<td style=\"background-color:#c3fcab\"></td>"
             table += "</tr>"
@@ -156,12 +162,12 @@ class BookingSystem:
         if num_days_ahead < 0:
             raise BookingInThePastForbidden()
 
-    def is_room_taken_at(self, room, day, timeslot):
+    def get_booking_at(self, room, day, timeslot):
         room = self.rooms[room]
         if not day in room:
-            return False
+            return None
         room_at_day = room[day]
-        return timeslot in room_at_day["booked_slots"]
+        return next(filter(lambda booking: booking["slot"] == timeslot, room_at_day["booked_slots"]), None)
     
         
 def main():
@@ -177,13 +183,24 @@ def main():
                 print_help()
             elif len(line) == 3 and line[0] == "add" and line[1] == "room":
                 booking_system.add_room(line[2])
-            elif len(line) == 4:
+            elif len(line) == 4 and line[0] == "book":
                 room = line[1]
                 d = date.fromisoformat(line[2])
                 if not line[3] in booking_system.timeslots:
                     print("Invalid slot " + line[3])
                 else:
-                    booking_system.book_room(room, d, booking_system.timeslots.index(line[3]))
+                    booking = create_booking(booking_system.timeslots.index(line[3]))
+                    booking_system.book_room(room, d, booking)
+            elif len(line) == 7 and line[0] == "book" and line[1] == "class":
+                room = line[4]
+                d = date.fromisoformat(line[5])
+                class_name = line[2]
+                prof_name = line[3]
+                if not line[6] in booking_system.timeslots:
+                    print("Invalid slot " + line[6])
+                else:
+                    booking = create_booking(booking_system.timeslots.index(line[6]), class_name, prof_name)
+                    booking_system.book_room(room, d, booking)
             else:
                 print_help()
         except Exception as e:
@@ -196,8 +213,10 @@ To quit:
     > quit
 To add a room
     > add room HW.003
-To book a room
+To book a room as a student
     > book HW.003 2023-11-15 08:00-08:45
+To book a room for a class
+    > book class Statistik Wermuth HW.003 2023-11-15 08:00-08:45
 To render a room table
     > render HW.003
                   ''')
